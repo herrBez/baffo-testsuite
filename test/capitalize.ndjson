@@ -1,0 +1,3 @@
+{"_testsuite":{"_id": "et-0"}, "message":"ok"}
+{"_testsuite":{"_id": "et-1"}, "message":["ok", "blue"]}
+{"_testsuite":{"_id": "et-2"}, "message": 12}

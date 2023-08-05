@@ -1,0 +1,6 @@
+# - pipeline.id: "prune"
+#   path.config: "/usr/share/logstash/pipeline/prune.conf"
+# - pipeline.id: "useragent"
+#   path.config: "/usr/share/logstash/pipeline/useragent.conf"
+# - pipeline.id: "capitalize"
+#   path.config: "/usr/share/logstash/pipeline/capitalize.conf"
