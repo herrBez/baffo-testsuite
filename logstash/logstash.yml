@@ -3,5 +3,5 @@ xpack.management.elasticsearch.hosts: https://es01:9200
 # xpack.management.elasticsearch.ssl.verification_mode: "none"
 xpack.management.elasticsearch.ssl.certificate_authority: "/usr/share/logstash/config/certs/ca/ca.crt"
 xpack.management.elasticsearch.username: "elastic"
-xpack.management.elasticsearch.password: "testsuite"
+xpack.management.elasticsearch.password: "changeme"
 xpack.management.pipeline.id: ["*"]
