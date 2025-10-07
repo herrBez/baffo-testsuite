@@ -26,7 +26,7 @@ logger.setLevel(logging.DEBUG)
 
 # logger.addHandler(handler)
 
-es = Elasticsearch(hosts=["https://127.0.0.1:9200"], verify_certs=False, basic_auth=("elastic", "testsuite"))
+es = Elasticsearch(hosts=["https://127.0.0.1:9200"], verify_certs=False, basic_auth=("elastic", "changeme"))
 
 logging.info("Waiting for Elastic to be reachable")
 while not es.ping():
