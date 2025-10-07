@@ -35,13 +35,24 @@ while not es.ping():
 
 logging.info("Elastic is reachable")
 
-pipelines = json.loads(sys.argv[1])
+pipelines = {}
+with open("pipelines.json", "r") as f:
+    pipelines = json.load(f)
 
-
-
+pipeline_conversion_error = False
 for p in pipelines:
-   IngestClient.put_pipeline(es, id=p, **pipelines[p])
+   # print("Uploading Pipeline: " + p)
+   try:
+        IngestClient.put_pipeline(es, id=p, **pipelines[p])
+   except Exception as e:
+       print("Error uploading pipeline: " + p)
+       print(pipelines[p])
+       print(e)
+       pipeline_conversion_error = True
 
+if pipeline_conversion_error:
+    logging.error("There were errors uploading the pipelines")
+    sys.exit(1)
 
 def generate_elasticsearch_bulk(filename: str, content: List[str]):
     for c in content:
