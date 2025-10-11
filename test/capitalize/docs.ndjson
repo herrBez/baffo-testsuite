@@ -1,4 +1,4 @@
-{"_testsuite":{"_id": "et-0"}, "message":"ok"}
-{"_testsuite":{"_id": "et-1"}, "message":["ok", "blue"]}
-{"_testsuite":{"_id": "et-2"}, "message":["This is a cool sentence", "blue"]}
-{"_testsuite":{"_id": "et-3"}, "message": 12}
+{"@metadata":{"id": "et-0"}, "message":"ok"}
+{"@metadata":{"id": "et-1"}, "message":["ok", "blue"]}
+{"@metadata":{"id": "et-2"}, "message":["This is a cool sentence", "blue"]}
+{"@metadata":{"id": "et-3"}, "message": 12}

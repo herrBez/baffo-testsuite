@@ -16,14 +16,24 @@ from dataclasses import dataclass
 
 
 @dataclass
+class TestDiff:
+    diff: DeepDiff
+    doc_id: str
+    doc_es: Optional[Dict] = None
+    doc_ls: Optional[Dict] = None
+    doc_original: Optional[Dict] = None
+
+
+@dataclass
 class TestResult:
     successes: int = 0
     errors: int = 0
-    error_diffs: List[DeepDiff] = None
+    error_diffs: List[TestDiff] = None
 
 @dataclass
 class TestSuite:
     results: Dict[str, TestResult] = None
+    es_version: str = None
 
     def add_result(self, key: str, result: TestResult):
         if self.results is None:
@@ -33,15 +43,79 @@ class TestSuite:
 
     def total_successes(self) -> int:
         return sum(result.successes for result in self.results.values()) if self.results else 0
-    
+
     def total_errors(self) -> int:
         return sum(result.errors for result in self.results.values()) if self.results else 0
-    
+
     def total_tests(self) -> int:
         return len(self.results) if self.results else 0
 
+    def total_tested_documents(self) -> int:
+        return self.total_successes() + self.total_errors()
+
 
 # --- Helper Function ---
+
+
+def generate_markdown_report(test_suite: TestSuite) -> str:
+    report_lines = ["# 🧪 Baffo Test Suite Report\n"]
+
+    total_successes = test_suite.total_successes()
+    total_errors = test_suite.total_errors()
+    total_tests = test_suite.total_tests()
+
+    # Add a summary section
+    report_lines.append("## 📊 Summary\n")
+    report_lines.append(f"- **Elasticsearch Version:** {test_suite.es_version}")
+    report_lines.append(f"- **Total Tests:** {total_tests}")
+    report_lines.append(f"- **Total Tested Documents:** {test_suite.total_tested_documents()}")
+    report_lines.append(f"- ✅ **Total Successes Documents:** {total_successes}")
+    report_lines.append(f"- ❌ **Total Errors Documents:** {total_errors}\n")
+
+    # Add details for each test
+    report_lines.append("## 🧩 Detailed Results\n")
+
+    for test_name, result in test_suite.results.items():
+        status_emoji = "✅" if result.errors == 0 else "❌"
+        report_lines.append(f"### {status_emoji} {test_name}")
+        report_lines.append(f"- **Successes:** {result.successes}")
+        report_lines.append(f"- **Errors:** {result.errors}")
+
+        if result.error_diffs:
+            report_lines.append("\n<details><summary>🧾 Error Details</summary>\n")
+            for i, diff in enumerate(result.error_diffs, 1):
+                report_lines.append(f"**Difference {i}:**")
+                report_lines.append("```json")
+                report_lines.append(json.dumps(diff.diff, indent=2, default=str))
+                report_lines.append("```")
+
+                report_lines.append(f"- **Document ID:** `{diff.doc_id}`")
+                if diff.doc_es:
+                    report_lines.append(f"- **Elasticsearch Document:**")
+                    report_lines.append(f"```json")
+                    report_lines.append(f"{json.dumps(diff.doc_es, indent=2, default=str)}")
+                    report_lines.append(f"```")
+                if diff.doc_ls:
+                    report_lines.append(f"- **Logstash Document:**")
+                    report_lines.append(f"```json")
+                    report_lines.append(f"{json.dumps(diff.doc_ls, indent=2, default=str)}")
+                    report_lines.append(f"```")
+
+            report_lines.append("</details>\n")
+        else:
+            report_lines.append("No differences detected.\n")
+    return "\n".join(report_lines)
+
+def write_report_to_file(report: str, filename: str):
+    # Write Markdown report
+    output_dir = Path(os.getenv("OUTPUT_DIR", "/output"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / filename
+
+    with open(report_path, "w", encoding="utf-8") as report_file:
+        report_file.write(report)
+
+    logger.info(f"📝 Markdown report written to '{report_path}'")
 
 def generate_elasticsearch_bulk_new(docs: List[dict], pipeline_name: str):
     """Generates documents for the Elasticsearch bulk API."""
@@ -49,7 +123,7 @@ def generate_elasticsearch_bulk_new(docs: List[dict], pipeline_name: str):
         logger.debug(f"Processing document for bulk upload: {doc}")
         yield {
             '_index': ES_INDEX,
-            '_id': doc["_testsuite"]["_id"],
+            '_id': doc["@metadata"]["id"],
             'pipeline': pipeline_name,
             '_source': doc
         }
@@ -67,10 +141,10 @@ def getDefaultBaffoOptions() -> BaffoOptions:
     return BaffoOptions()
 
 def getIdiomaticBaffoOptions() -> BaffoOptions:
-    return BaffoOptions(log_level="info", 
-                        pipeline_threshold=10, 
-                        deal_with_error_locally=False, 
-                        add_default_global_on_failure=True, 
+    return BaffoOptions(log_level="info",
+                        pipeline_threshold=10,
+                        deal_with_error_locally=False,
+                        add_default_global_on_failure=True,
                         fidelity=True)
 
 
@@ -96,7 +170,7 @@ def convert_logstash_to_es_pipeline(logstash_pipeline_path: str, options: BaffoO
     except Exception as e:
         logger.error(f"Error transpiling Logstash pipeline {logstash_pipeline_path}")
         logger.exception(e)
-        
+
 def getDocumentSourceById(es: elasticsearch.Elasticsearch, index: str, doc_id: str) -> Optional[Dict]:
     """Fetches a document from Elasticsearch by index and ID."""
     try:
@@ -133,10 +207,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Client setup (keep as is, assuming Elasticsearch is running locally with default credentials)
 es = elasticsearch.Elasticsearch(
-    hosts=["https://127.0.0.1:9200"],
+    hosts=[os.environ.get("ES_HOST", "https://localhost:9200")],
     verify_certs=False,
     basic_auth=("elastic", "changeme")
 )
+
+es_version = es.info().get('version', {}).get('number', 'unknown')
 
 # --- Make sure the indices do not exist ---
 es.options(ignore_status=[400, 404]).indices.delete(index=ES_INDEX)
@@ -149,7 +225,7 @@ es.options(ignore_status=[400, 404]).indices.create(index=ES_INDEX, mappings={"d
 es.options(ignore_status=[400, 404]).indices.create(index=LS_INDEX, mappings={"dynamic": False})
 logger.info(f"Indices '{ES_INDEX}' and '{LS_INDEX}' ensured to exist.")
 
-test_suite = TestSuite()
+test_suite = TestSuite(es_version=es_version)
 
 for test in os.listdir("test"):
     if not os.path.isdir(os.path.join("test", test)):
@@ -216,7 +292,7 @@ for test in os.listdir("test"):
     elasticsearch {{
         hosts => ["es01:9200"]
         index => "{LS_INDEX}"
-        document_id => "%{{[_testsuite][_id]}}"
+        document_id => "%{{[@metadata][id]}}"
         user => "elastic"
         password => "changeme"
         ssl_enabled => true
@@ -297,10 +373,10 @@ for test in os.listdir("test"):
 
 
     errors = 0
-    error_diffs: List[DeepDiff] = []
+    error_diffs: List[TestDiff] = []
     # Wait for indexing to complete and for Elasticsearch to refresh the indices
-    logger.info("Waiting 10 seconds for Elasticsearch to refresh indices...")
-    sleep(10)
+    logger.info("Waiting 5 seconds for Elasticsearch to refresh indices...")
+    sleep(5)
     es.indices.refresh(index=ES_INDEX)
     es.indices.refresh(index=LS_INDEX)
 
@@ -308,69 +384,56 @@ for test in os.listdir("test"):
 
 
     with open(docs_path, "r") as f:
-        ids = []
-        for line in f.readlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                doc = json.loads(line)
-                if "_testsuite" in doc and "_id" in doc["_testsuite"]:
-                        ids.append(doc["_testsuite"]["_id"])
-            except json.JSONDecodeError:
-                logger.warning(f"Could not parse line to get ID for comparison: {line}")
+        docs = [json.loads(line) for line in f.readlines() if line.strip()]
+
+        for doc in docs:
+
+            if len(doc) == 0:
                 continue
 
-            for doc_id in ids:
-                    # Get documents from both indices
-                    logger.info(f"Comparing documents with ID: {doc_id}...")
+            doc_id = doc["@metadata"]["id"]
 
-                    es_example = getDocumentSourceById(es, ES_INDEX, doc_id)
-                    ls_example = getDocumentSourceById(es, LS_INDEX, doc_id)
+            # Get documents from both indices
+            logger.info(f"Comparing documents with ID: {doc_id}...")
 
-                    notFound = False
+            es_example = getDocumentSourceById(es, ES_INDEX, doc_id)
+            ls_example = getDocumentSourceById(es, LS_INDEX, doc_id)
 
-                    if es_example is None:
-                        notFound = True
-                        messageToAppend += f"Document with ID {doc_id} not found in index '{ES_INDEX}'."
-                    if ls_example is None:
-                        notFound = True
-                        messageToAppend += f"Document with ID {doc_id} not found in index '{LS_INDEX}'."
+            notFound = False
 
-                    if notFound:
-                        logger.error(messageToAppend)
-                        test_result.errors += 1
-                        test_result.error_diffs.append(DeepDiff(f"{messageToAppend}", {}))
-                        continue
-                    
+            messageToAppend = ""
 
-                    # Compare sources
-                    ddiff = DeepDiff(
-                        es_example,
-                        ls_example,
-                        ignore_order=True,
-                        exclude_paths=["root['@version']", "root['@timestamp']", "root['host']", "root['log']", "root['_TRANSPILER']", "root['ecs']"]
-                    )
+            if es_example is None:
+                notFound = True
+                messageToAppend += f"Document with ID {doc_id} not found in index '{ES_INDEX}'."
+            if ls_example is None:
+                notFound = True
+                messageToAppend += f"Document with ID {doc_id} not found in index '{LS_INDEX}'."
 
-                    if bool(ddiff):
-                        
-                        errors += 1
-                        error_diffs.append(ddiff)
-                        test_result.errors += 1
-                        test_result.error_diffs.append(ddiff)
-                    else:
-                        test_result.successes += 1
-                        logger.debug(f"Documents match for ID: {doc_id}")
-                        
+            if notFound:
+                logger.error(messageToAppend)
+                test_result.errors += 1
+                test_result.error_diffs.append(TestDiff(DeepDiff(f"{messageToAppend}", {}), doc_id=doc_id, doc_es=es_example, doc_ls=ls_example, doc_original=doc))
+                continue
 
 
-                # except Exception as e:
-                #     logger.error(f"Error during comparison for ID: {doc_id}")
-                #     logger.exception(e)
-                #     test_result.errors += 1
-                #     test_result.error_diffs.append(DeepDiff(f"Error during comparison for ID: {doc_id}", {}))
+            # Compare sources
+            ddiff = DeepDiff(
+                es_example,
+                ls_example,
+                ignore_order=True,
+                exclude_paths=["root['@version']", "root['@timestamp']", "root['host']", "root['log']", "root['_TRANSPILER']", "root['ecs']", "root['@metadata']"]
+            )
 
-        test_suite.add_result(test, test_result)
+            if bool(ddiff):
+                test_result.errors += 1
+                test_result.error_diffs.append(TestDiff(ddiff, doc_id=doc_id, doc_es=es_example, doc_ls=ls_example, doc_original=doc))
+            else:
+                test_result.successes += 1
+                logger.debug(f"Documents match for ID: {doc_id}")
+
+
+    test_suite.add_result(test, test_result)
 
 # --- Final Output and Assertion ---
 
@@ -381,10 +444,10 @@ logger.info(f"ℹ️ There is/are {test_suite.total_errors()} error(s) in the co
 
 
 
+
 # Assert and final print statement
 if test_suite.total_errors() == 0:
     logger.info("Test Successful 🎉")
-
 
 else:
     for t in test_suite.results:
@@ -395,3 +458,9 @@ else:
             logger.error(f"Test '{t}' Failed ❌: {result.errors} difference(s) found")
             for ed in result.error_diffs:
                 logger.error(ed)
+
+
+
+markdown_report = generate_markdown_report(test_suite)
+
+write_report_to_file(markdown_report, "baffo-testsuite-report.md")
