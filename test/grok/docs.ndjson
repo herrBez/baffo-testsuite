@@ -1,0 +1,1 @@
+{"@metadata": {"id": "grok-1"}, "message": "45.203.10.210 - - [13/Jan/2020:05:30:38 +0000] \"POST /wp-cron.php?doing_wp_cron=149332.6687 HTTP/1.1\" 200 - \"http://technopart.com/wp-cron.php?doing_wp_cron=149332.6687\" \"WordPress/4.7.2; http://technopart.com\""}
