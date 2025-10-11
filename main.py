@@ -207,9 +207,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Client setup (keep as is, assuming Elasticsearch is running locally with default credentials)
 es = elasticsearch.Elasticsearch(
-    hosts=[os.environ.get("ES_HOST", "https://localhost:9200")],
+    hosts=[os.environ.get("ES_HOST", "https://es01:9200")],
     verify_certs=False,
-    basic_auth=("elastic", "changeme")
+    basic_auth=(os.environ.get("ELASTIC_USER", "elastic"), os.environ.get("ELASTIC_PASSWORD", "changeme"))
 )
 
 es_version = es.info().get('version', {}).get('number', 'unknown')

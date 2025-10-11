@@ -182,6 +182,9 @@ services:
       - ./output:/output
     environment:
       - PYTHONUNBUFFERED=1
+      - ES_HOST=https://es01:9200
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ELASTIC_USER=elastic
 
 volumes:
   certs:
