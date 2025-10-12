@@ -227,8 +227,13 @@ logger.info(f"Indices '{ES_INDEX}' and '{LS_INDEX}' ensured to exist.")
 
 test_suite = TestSuite(es_version=es_version)
 
+tests = os.environ.get("TESTS", "").split(",")
+
 for test in os.listdir("test"):
     if not os.path.isdir(os.path.join("test", test)):
+        continue
+    if len(test) > 0 and test not in tests:
+        logger.info(f"Skipping test '{test}' as it's not in the selected tests list.")
         continue
 
     logstash_pipeline_path = os.path.join("test", test, "pipeline.conf")
